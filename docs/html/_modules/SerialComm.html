@@ -1,0 +1,512 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>SerialComm &mdash; Motor Teststand SerialComm  documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  
+  
+    <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  
+
+  
+
+  
+        <link rel="index" title="Index"
+              href="../genindex.html"/>
+        <link rel="search" title="Search" href="../search.html"/>
+    <link rel="top" title="Motor Teststand SerialComm  documentation" href="../index.html"/>
+        <link rel="up" title="Module code" href="index.html"/> 
+
+  
+  <script src="../_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+   
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="../index.html" class="icon icon-home"> Motor Teststand SerialComm
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <!-- Local TOC -->
+              <div class="local-toc"></div>
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Motor Teststand SerialComm</a>
+        
+      </nav>
+
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="index.html">Module code</a> &raquo;</li>
+        
+      <li>SerialComm</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <h1>Source code for SerialComm</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">* Author: Austin Stover</span>
+<span class="sd">* Date: July-August 2017</span>
+
+<span class="sd">* This program performs transmission and reception of serial data from the SerialComm    \</span>
+<span class="sd">  class with the stated protocol</span>
+
+<span class="sd">Useful Links:</span>
+<span class="sd">   * `PySerial 2.7 Documentation &lt;https://web.archive.org/web/20150808165248/http://pyserial.sourceforge.net:80/pyserial_api.html&gt;`_</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">serial</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">deque</span>
+
+
+<div class="viewcode-block" id="SerialComm"><a class="viewcode-back" href="../index.html#SerialComm.SerialComm">[docs]</a><span class="k">class</span> <span class="nc">SerialComm</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A Serial Communication Class to communicate with an Arduino</span>
+
+<span class="sd">    :param serialPort: A PySerial object</span>
+<span class="sd">    :param dictLength: The max # of messages of each type to store</span>
+
+<span class="sd">    This class receives and transmits messages with the following protocol:</span>
+<span class="sd">    </span>
+<span class="sd">    ============ ================ ======================= ================ ================ ===== ==========================</span>
+<span class="sd">    Protocol</span>
+<span class="sd">    ------------------------------------------------------------------------------------------------------------------------</span>
+<span class="sd">    Byte number:        1.                  2.                   3.               4.         ...              N.</span>
+<span class="sd">    ============ ================ ======================= ================ ================ ===== ==========================</span>
+<span class="sd">    Description: [ Magic Number ] [ Type Identifier Key ] [ Data Payload ] [ Data Payload ]  etc  [ Error Check (LRC) Byte ]</span>
+<span class="sd">    ============ ================ ======================= ================ ================ ===== ==========================</span>
+
+<span class="sd">    To Use:</span>
+<span class="sd">    </span>
+<span class="sd">       * Send messages with the send...() methods</span>
+<span class="sd">       * Receive messages by putting processData() in a loop--This data will be stored   \</span>
+<span class="sd">         in the dict variable, with a key for each message type and a deque with the     \</span>
+<span class="sd">         messages for each key</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="n">MAGIC_NUM</span> <span class="o">=</span> <span class="nb">ord</span><span class="p">(</span><span class="s1">&#39;!&#39;</span><span class="p">)</span>
+    <span class="n">DEBUG_STRING</span> <span class="o">=</span> <span class="mh">0x30</span>         <span class="c1">#UTF-8 encoded string</span>
+    <span class="n">ERROR_STRING</span> <span class="o">=</span> <span class="mh">0x31</span>         <span class="c1">#UTF-8 encoded string</span>
+    <span class="n">TIMESTAMP</span> <span class="o">=</span> <span class="mh">0x32</span>            <span class="c1">#4-Byte Integer</span>
+    <span class="c1"># Python -&gt; Arduino</span>
+    <span class="n">POWER_SETTING</span> <span class="o">=</span> <span class="mh">0x36</span>        <span class="c1">#2-Byte Integer (Converted from Boolean)</span>
+    <span class="n">THROTTLE_SETTING</span> <span class="o">=</span> <span class="mh">0x37</span>     <span class="c1">#2-Byte Integer (0-100)</span>
+    <span class="n">MAX_CURRENT</span> <span class="o">=</span> <span class="mh">0x38</span>          <span class="c1">#4-Byte Float</span>
+    <span class="n">MAX_VOLTAGE</span> <span class="o">=</span> <span class="mh">0x39</span>          <span class="c1">#4-Byte Float</span>
+    <span class="c1">#Arduino -&gt; Python</span>
+    <span class="n">THRUST</span> <span class="o">=</span> <span class="mh">0x40</span>               <span class="c1">#4-Byte Float</span>
+    <span class="n">ROT_SPEED</span> <span class="o">=</span> <span class="mh">0x41</span>            <span class="c1">#4-Byte Float</span>
+    <span class="n">CURRENT</span> <span class="o">=</span> <span class="mh">0x42</span>              <span class="c1">#4-Byte Float</span>
+    <span class="n">VOLTAGE</span> <span class="o">=</span> <span class="mh">0x43</span>              <span class="c1">#4-Byte Float</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">serialPort</span><span class="p">,</span> <span class="n">dictLength</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Instantiate the object</span>
+<span class="sd">        </span>
+<span class="sd">        :param serialPort: A PySerial object</span>
+<span class="sd">        :param dictLength: The max # of messages of each type to store</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_calcLRC</span> <span class="o">=</span> <span class="mi">0</span>       <span class="c1">#Calculated error check byte</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span> <span class="o">=</span> <span class="n">serialPort</span>  <span class="c1">#Define a pySerial object</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">dict</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;Debug&#39;</span><span class="p">:</span>       <span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="n">dictLength</span><span class="p">),</span>
+                     <span class="s1">&#39;Error&#39;</span><span class="p">:</span>       <span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="n">dictLength</span><span class="p">),</span>
+                     <span class="s1">&#39;Timestamp&#39;</span><span class="p">:</span>   <span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="n">dictLength</span><span class="p">),</span>
+                     <span class="s1">&#39;Thrust&#39;</span><span class="p">:</span>      <span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="n">dictLength</span><span class="p">),</span>
+                     <span class="s1">&#39;Rot Speed&#39;</span><span class="p">:</span>   <span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="n">dictLength</span><span class="p">),</span>
+                     <span class="s1">&#39;Current&#39;</span><span class="p">:</span>     <span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="n">dictLength</span><span class="p">),</span>
+                     <span class="s1">&#39;Voltage&#39;</span><span class="p">:</span>     <span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="n">dictLength</span><span class="p">)</span> <span class="p">}</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        A Dictionary to hold messages</span>
+<span class="sd">        </span>
+<span class="sd">        Each key is a message type which holds a fixed-length deque with recent messages \</span>
+<span class="sd">        of that type</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+    
+<div class="viewcode-block" id="SerialComm.processData"><a class="viewcode-back" href="../index.html#SerialComm.SerialComm.processData">[docs]</a>    <span class="k">def</span> <span class="nf">processData</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">numLoops</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Processes the next byte of data received; if this byte is the beginning of a \</span>
+<span class="sd">        message, adds the message to dict</span>
+<span class="sd">        </span>
+<span class="sd">        :param numLoops: The # of times to do this</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">xrange</span><span class="p">(</span><span class="n">numLoops</span><span class="p">):</span>
+            <span class="k">if</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">inWaiting</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">1000</span><span class="p">):</span>                           <span class="c1">#If too many bytes fill buffer, clear it</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">flushInput</span><span class="p">()</span>
+            <span class="k">elif</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">inWaiting</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>                            <span class="c1">#If bytes are available in buffer</span>
+                <span class="k">if</span><span class="p">(</span><span class="nb">ord</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">read</span><span class="p">())</span> <span class="o">==</span> <span class="n">SerialComm</span><span class="o">.</span><span class="n">MAGIC_NUM</span><span class="p">):</span>      <span class="c1">#If 1st byte == magic number</span>
+                    <span class="n">typeByte</span> <span class="o">=</span> <span class="nb">ord</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>                    <span class="c1">#Read the type identifier byte</span>
+                    <span class="n">typeOfMessage</span><span class="p">,</span> <span class="n">message</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_readData</span><span class="p">(</span><span class="n">typeByte</span><span class="p">)</span>   <span class="c1">#Read the rest of the message</span>
+                    <span class="n">lRCIn</span> <span class="o">=</span> <span class="nb">ord</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>                       <span class="c1">#Read error check byte</span>
+                    <span class="k">if</span><span class="p">(</span><span class="n">typeOfMessage</span> <span class="o">!=</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_calcLRC</span> <span class="o">==</span> <span class="n">lRCIn</span><span class="p">):</span> <span class="c1">#Ensure type byte found and do error check</span>
+                        <span class="c1">#print typeOfMessage, &quot;: &quot;, message</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">dict</span><span class="p">[</span><span class="n">typeOfMessage</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">message</span><span class="p">)</span></div>
+
+   
+    <span class="c1">#   Output Functions:</span>
+
+<div class="viewcode-block" id="SerialComm.sendDebug"><a class="viewcode-back" href="../index.html#SerialComm.SerialComm.sendDebug">[docs]</a>    <span class="k">def</span> <span class="nf">sendDebug</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stringToSend</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Sends a debug message</span>
+<span class="sd">        </span>
+<span class="sd">        :param stringToSend: The message</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">([</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">MAGIC_NUM</span><span class="p">]))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">([</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">DEBUG_STRING</span><span class="p">]))</span>
+        <span class="n">dataOut</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s1">&#39;&gt;H&#39;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">stringToSend</span><span class="p">)))</span>
+        <span class="n">dataOut</span> <span class="o">+=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="n">stringToSend</span><span class="p">,</span> <span class="s1">&#39;UTF-8&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">dataOut</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">_lRCheck</span><span class="p">(</span><span class="n">dataOut</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span></div>
+        
+<div class="viewcode-block" id="SerialComm.sendError"><a class="viewcode-back" href="../index.html#SerialComm.SerialComm.sendError">[docs]</a>    <span class="k">def</span> <span class="nf">sendError</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stringToSend</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Sends an error message</span>
+<span class="sd">        </span>
+<span class="sd">        :param stringToSend: The message</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">([</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">MAGIC_NUM</span><span class="p">]))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">([</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">ERROR_STRING</span><span class="p">]))</span>
+        <span class="n">dataOut</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s1">&#39;&gt;H&#39;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">stringToSend</span><span class="p">)))</span>
+        <span class="n">dataOut</span> <span class="o">+=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="n">stringToSend</span><span class="p">,</span> <span class="s1">&#39;UTF-8&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">dataOut</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">_lRCheck</span><span class="p">(</span><span class="n">dataOut</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="SerialComm.sendTimestamp"><a class="viewcode-back" href="../index.html#SerialComm.SerialComm.sendTimestamp">[docs]</a>    <span class="k">def</span> <span class="nf">sendTimestamp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">intToSend</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Sends a timestamp message</span>
+<span class="sd">        </span>
+<span class="sd">        :param intToSend: The timestamp as an integer, in the range of a valid Arduino long</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">([</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">MAGIC_NUM</span><span class="p">]))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">([</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">TIMESTAMP</span><span class="p">]))</span>
+        <span class="n">dataOut</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s1">&#39;&gt;i&#39;</span><span class="p">,</span> <span class="n">intToSend</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">dataOut</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">_lRCheck</span><span class="p">(</span><span class="n">dataOut</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="SerialComm.sendPowerSetting"><a class="viewcode-back" href="../index.html#SerialComm.SerialComm.sendPowerSetting">[docs]</a>    <span class="k">def</span> <span class="nf">sendPowerSetting</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">boolToSend</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Sends the power-setting</span>
+<span class="sd">        </span>
+<span class="sd">        :param boolToSend: True for on, False for off</span>
+<span class="sd">        :raises: ValueError</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">([</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">MAGIC_NUM</span><span class="p">]))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">([</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">POWER_SETTING</span><span class="p">]))</span>
+        <span class="n">shortToSend</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">boolToSend</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">shortToSend</span> <span class="o">!=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">shortToSend</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;boolToSend must be either 1 or 0, not &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">shortToSend</span><span class="p">))</span>
+        <span class="n">dataOut</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s1">&#39;&gt;h&#39;</span><span class="p">,</span> <span class="n">shortToSend</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">dataOut</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">_lRCheck</span><span class="p">(</span><span class="n">dataOut</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="SerialComm.sendThrottleSetting"><a class="viewcode-back" href="../index.html#SerialComm.SerialComm.sendThrottleSetting">[docs]</a>    <span class="k">def</span> <span class="nf">sendThrottleSetting</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">shortToSend</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Sends the throttle setting</span>
+<span class="sd">        </span>
+<span class="sd">        :param shortToSend: An integer between 0 and 100, inclusive</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">([</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">MAGIC_NUM</span><span class="p">]))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">([</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">THROTTLE_SETTING</span><span class="p">]))</span>
+        <span class="n">dataOut</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s1">&#39;&gt;h&#39;</span><span class="p">,</span> <span class="n">shortToSend</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">dataOut</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">_lRCheck</span><span class="p">(</span><span class="n">dataOut</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="SerialComm.sendMaxCurrent"><a class="viewcode-back" href="../index.html#SerialComm.SerialComm.sendMaxCurrent">[docs]</a>    <span class="k">def</span> <span class="nf">sendMaxCurrent</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">floatToSend</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Sends the max current</span>
+<span class="sd">        </span>
+<span class="sd">        :param floatToSend: The max current as a floating-point # in the range of an \</span>
+<span class="sd">        Arduino double/float</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">([</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">MAGIC_NUM</span><span class="p">]))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">([</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">MAX_CURRENT</span><span class="p">]))</span>
+        <span class="n">dataOut</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s1">&#39;&lt;f&#39;</span><span class="p">,</span> <span class="n">floatToSend</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">dataOut</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">_lRCheck</span><span class="p">(</span><span class="n">dataOut</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span></div>
+        
+<div class="viewcode-block" id="SerialComm.sendMaxVoltage"><a class="viewcode-back" href="../index.html#SerialComm.SerialComm.sendMaxVoltage">[docs]</a>    <span class="k">def</span> <span class="nf">sendMaxVoltage</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">floatToSend</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Sends the max voltage</span>
+<span class="sd">        </span>
+<span class="sd">        :param floatToSend: The max current as a floating-point # in the range of an \</span>
+<span class="sd">        Arduino double/float</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">([</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">MAGIC_NUM</span><span class="p">]))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">([</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">MAX_VOLTAGE</span><span class="p">]))</span>
+        <span class="n">dataOut</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">(</span><span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s1">&#39;&lt;f&#39;</span><span class="p">,</span> <span class="n">floatToSend</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">dataOut</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">SerialComm</span><span class="o">.</span><span class="n">_lRCheck</span><span class="p">(</span><span class="n">dataOut</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span></div>
+
+
+    <span class="c1"># Input Functions:</span>
+
+    <span class="k">def</span> <span class="nf">_readData</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">typeIDByte</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Reads data pertaining to the type identifier byte received</span>
+<span class="sd">        </span>
+<span class="sd">        :param typeIDByte: The type identifier byte (An integer)</span>
+<span class="sd">        :returns: A tuple consisting of (message-type, message) or (None,None) if   \  </span>
+<span class="sd">        typeIDByte not recognized</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">typeIDByte</span> <span class="o">==</span> <span class="n">SerialComm</span><span class="o">.</span><span class="n">DEBUG_STRING</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s1">&#39;Debug&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_readUTF</span><span class="p">()</span>
+        <span class="k">elif</span><span class="p">(</span><span class="n">typeIDByte</span> <span class="o">==</span> <span class="n">SerialComm</span><span class="o">.</span><span class="n">ERROR_STRING</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s1">&#39;Error&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_readUTF</span><span class="p">()</span>
+        <span class="k">elif</span><span class="p">(</span><span class="n">typeIDByte</span> <span class="o">==</span> <span class="n">SerialComm</span><span class="o">.</span><span class="n">TIMESTAMP</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s1">&#39;Timestamp&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_readInt</span><span class="p">()</span>
+        <span class="k">elif</span><span class="p">(</span><span class="n">typeIDByte</span> <span class="o">==</span> <span class="n">SerialComm</span><span class="o">.</span><span class="n">THRUST</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s1">&#39;Thrust&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_readFloat</span><span class="p">()</span>
+        <span class="k">elif</span><span class="p">(</span><span class="n">typeIDByte</span> <span class="o">==</span> <span class="n">SerialComm</span><span class="o">.</span><span class="n">ROT_SPEED</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s1">&#39;Rot Speed&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_readFloat</span><span class="p">()</span>
+        <span class="k">elif</span><span class="p">(</span><span class="n">typeIDByte</span> <span class="o">==</span> <span class="n">SerialComm</span><span class="o">.</span><span class="n">CURRENT</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s1">&#39;Current&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_readFloat</span><span class="p">()</span>
+        <span class="k">elif</span><span class="p">(</span><span class="n">typeIDByte</span> <span class="o">==</span> <span class="n">SerialComm</span><span class="o">.</span><span class="n">VOLTAGE</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s1">&#39;Voltage&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_readFloat</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+    
+    <span class="k">def</span> <span class="nf">_readUTF</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Reads a string in UTF format (An Arduino C String)</span>
+<span class="sd">        </span>
+<span class="sd">        :returns: The received string&quot;&quot;&quot;</span>
+        <span class="n">dataIn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="n">lenStr</span> <span class="o">=</span> <span class="n">struct</span><span class="o">.</span><span class="n">unpack</span><span class="p">(</span><span class="s1">&#39;&gt;H&#39;</span><span class="p">,</span> <span class="n">dataIn</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="c1">#First 2 bytes (unsigned short) define length of string</span>
+        <span class="n">message</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">;</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">lenStr</span><span class="p">):</span>                 <span class="c1">#Remaining bytes define string</span>
+            <span class="n">datumIn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+            <span class="n">dataIn</span> <span class="o">+=</span> <span class="n">datumIn</span>
+            <span class="n">message</span> <span class="o">+=</span> <span class="n">datumIn</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_calcLRC</span> <span class="o">=</span> <span class="n">SerialComm</span><span class="o">.</span><span class="n">_lRCheck</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">(</span><span class="n">dataIn</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">message</span>
+
+    <span class="k">def</span> <span class="nf">_readInt</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Reads a signed 4-Byte integer (An Arduino C long) in big-endian format</span>
+<span class="sd">        </span>
+<span class="sd">        :returns: The received integer</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">dataIn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_calcLRC</span> <span class="o">=</span> <span class="n">SerialComm</span><span class="o">.</span><span class="n">_lRCheck</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">(</span><span class="n">dataIn</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">struct</span><span class="o">.</span><span class="n">unpack</span><span class="p">(</span><span class="s1">&#39;&gt;i&#39;</span><span class="p">,</span> <span class="n">dataIn</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">_readShort</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Reads a signed 2-Byte integer (An Arduino C int) in big-endian format and returns it</span>
+<span class="sd">        </span>
+<span class="sd">        :returns: The received integer</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">dataIn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_calcLRC</span> <span class="o">=</span> <span class="n">SerialComm</span><span class="o">.</span><span class="n">_lRCheck</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">(</span><span class="n">dataIn</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">struct</span><span class="o">.</span><span class="n">unpack</span><span class="p">(</span><span class="s1">&#39;&gt;h&#39;</span><span class="p">,</span> <span class="n">dataIn</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">_readFloat</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Reads a 4-Byte float (An Arduino C float) in little-endian format and returns it</span>
+<span class="sd">        </span>
+<span class="sd">        :returns: The received floating-point number</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">dataIn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ser</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_calcLRC</span> <span class="o">=</span> <span class="n">SerialComm</span><span class="o">.</span><span class="n">_lRCheck</span><span class="p">(</span><span class="nb">bytearray</span><span class="p">(</span><span class="n">dataIn</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">struct</span><span class="o">.</span><span class="n">unpack</span><span class="p">(</span><span class="s1">&#39;&lt;f&#39;</span><span class="p">,</span> <span class="n">dataIn</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+
+    <span class="c1"># Error Check Function</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_lRCheck</span><span class="p">(</span><span class="n">dataIn</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculates the longitudinal redundancy check byte</span>
+<span class="sd">        </span>
+<span class="sd">        :param data: The payload</span>
+<span class="sd">        :returns: The LRC byte (An integer)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">lRC</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">dataIn</span><span class="p">:</span>
+            <span class="n">lRC</span> <span class="o">=</span> <span class="p">(</span><span class="n">lRC</span> <span class="o">+</span> <span class="n">b</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xFF</span>
+        <span class="n">lRC</span> <span class="o">=</span> <span class="p">((</span><span class="n">lRC</span> <span class="o">^</span> <span class="mh">0xFF</span><span class="p">)</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xFF</span>
+        <span class="k">return</span> <span class="n">lRC</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../index.html#SerialComm.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;Demo Program: prints a dictionary of messages after some # received&quot;&quot;&quot;</span>
+    <span class="kn">import</span> <span class="nn">sys</span>
+    
+    <span class="n">ser</span> <span class="o">=</span> <span class="n">serial</span><span class="o">.</span><span class="n">Serial</span><span class="p">(</span><span class="s1">&#39;COM6&#39;</span><span class="p">,</span> <span class="mi">9600</span><span class="p">,</span> <span class="n">serial</span><span class="o">.</span><span class="n">EIGHTBITS</span><span class="p">,</span> <span class="n">serial</span><span class="o">.</span><span class="n">PARITY_NONE</span><span class="p">,</span> <span class="n">serial</span><span class="o">.</span><span class="n">STOPBITS_ONE</span><span class="p">)</span>
+    <span class="n">commChan</span> <span class="o">=</span> <span class="n">SerialComm</span><span class="p">(</span><span class="n">ser</span><span class="p">)</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        
+        <span class="n">commChan</span><span class="o">.</span><span class="n">processData</span><span class="p">()</span>
+
+        <span class="k">if</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">commChan</span><span class="o">.</span><span class="n">dict</span><span class="p">[</span><span class="s1">&#39;Debug&#39;</span><span class="p">])</span> <span class="o">&gt;=</span> <span class="mi">10</span><span class="p">):</span>
+            <span class="nb">print</span> <span class="n">commChan</span><span class="o">.</span><span class="n">dict</span> <span class="c1">#Print messages when there are enough of one kind stored</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">()</span></div>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+
+</pre></div>
+
+           </div>
+           <div class="articleComments">
+            
+           </div>
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2017, Austin Stover.
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    <script type="text/javascript">
+        var DOCUMENTATION_OPTIONS = {
+            URL_ROOT:'../',
+            VERSION:'',
+            COLLAPSE_INDEX:false,
+            FILE_SUFFIX:'.html',
+            HAS_SOURCE:  true,
+            SOURCELINK_SUFFIX: '.txt'
+        };
+    </script>
+      <script type="text/javascript" src="../_static/jquery.js"></script>
+      <script type="text/javascript" src="../_static/underscore.js"></script>
+      <script type="text/javascript" src="../_static/doctools.js"></script>
+
+  
+
+  
+  
+    <script type="text/javascript" src="../_static/js/theme.js"></script>
+  
+
+  
+  
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.StickyNav.enable();
+      });
+  </script>
+   
+
+</body>
+</html>
