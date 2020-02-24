@@ -1,5 +1,5 @@
 # SerialComm
-A simple protocol for uart serial communication between a computer running Python and an Arduino microcontroller. Has error checking.
+A simple protocol for high-level uart serial communication between a computer running Python and an Arduino microcontroller. Has error checking.
 
 Implements a protocol for the transfer of UTF-8 strings, 4-byte and 2-byte integers, and 4-byte floats. The implementation is project-specific (it was originally made for a motor-test-stand) but can be adapted to fit any project. Error checking uses a longitudinal redundancy check (LRC) byte, and erroneous messages are ignored.
 
